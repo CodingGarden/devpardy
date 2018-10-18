@@ -1,110 +1,190 @@
 <template>
   <section class="game">
-    <section class="board">
-      <section
-        class="category"
-        v-for="category in categories"
-        :key="category._id">
-        <section class="category-title">
-          {{category.name}}
-        </section>
-        <section
-          class="answer"
-          v-for="answer in category.answers"
-          @click="setCurrentAnswer(answer)"
-          :key="answer.value">
-          <span class="value">{{answer.value}}</span>
-        </section>
-      </section>
-    </section>
-    <section class="players">
-      <section
-        class="player"
-        v-for="(player, i) in game.players"
-        :class="{
-          current_player: current_player === i
-        }"
-        :key="i">
-        <b-input v-model="player.name" />
-        <h3>{{player.score}}</h3>
-      </section>
-    </section>
-    <section class="current-status" v-if="current_answer">
+    <game-board
+      :data="data"
+      :setCurrentAnswer="setCurrentAnswer"
+      class="game-area"
+    />
+    <section class="current-status" v-if="data.current_answer">
       <section class="current-answer">
-        <b-button
-          @click="startAnswer()"
-          variant="danger">
-          Enable Buzzers
-        </b-button>
-        {{current_answer.answer}}
+        {{data.current_answer.answer}}
       </section>
       <section class="current-question">
-        {{current_answer.question}}
+        <section class="buttons" v-if="data.current_answer_info.answering">
+          <b-button
+            @click="correctAnswer()"
+            variant="success">
+            Correct
+          </b-button>
+          <b-button
+            @click="wrongAnswer()"
+            variant="danger">
+            Wrong
+          </b-button>
+        </section>
+        {{data.current_answer.question}}
       </section>
     </section>
-    <section class="controls">
-      <h1>Time left: {{current_answer_info.seconds_left}}</h1>
+    <section class="controls" v-if="data.current_answer">
+      <b-button
+        @click="startAnswer()"
+        v-if="!data.current_answer_info.started"
+        variant="danger">
+        Enable Buzzers
+      </b-button>
+      <section
+        class="buttons"
+        v-if="data.current_answer_info.started && (data.current_answer_info.seconds_left === 0 || data.current_answer_info.wrong.length === 3)">
+        <b-button
+          @click="resetNextQuestion()">
+          Next Question
+        </b-button>
+      </section>
+    </section>
+    <section class="controls-status">
+      <h1>Time left: {{data.current_answer_info.seconds_left}}</h1>
+      <b-button
+        v-if="data.stop_timer"
+        @click="resumeTimer()">
+        Resume Timer
+      </b-button>
+      <b-button
+        v-if="data.current_answer_info.seconds_left > 0"
+        @click="data.stop_timer = true">
+        Stop Timer
+      </b-button>
     </section>
   </section>
 </template>
 
 <script>
+import { ipcRenderer } from 'electron';
 import db from '@/db';
+import GameBoard from '@/components/GameBoard';
 import { performance } from 'perf_hooks';
+
+const audioPlayer = new Audio();
 
 export default {
   data: () => ({
-    game: {},
-    categories: [],
-    current_player: 0,
-    current_answer: null,
-    current_answer_info: {
-      seconds_left: 0,
-      end: 0,
-      buzzed_in: [],
+    data: {
+      game: {},
+      categories: [],
+      current_player: 0,
+      current_answer: null,
+      stop_timer: false,
+      current_answer_info: {
+        started: false,
+        started_player: 0,
+        seconds_left: 0,
+        end: 0,
+        buzzed_in: [],
+        wrong: [],
+        answering: false,
+      },
     },
   }),
+  components: {
+    GameBoard,
+  },
+  watch: {
+    data: {
+      handler() {
+        localStorage.gameData = JSON.stringify(this.data);
+        // db.playedGames.update({
+        //   _id: this.$route.params.id,
+        // }, this.data.game);
+      },
+      deep: true,
+    },
+  },
   async mounted() {
     window.addEventListener('gamepadconnected', (e) => {
       console.log(e.gamepad);
     });
 
-    this.game = await db.playedGames.findOne({
+    this.data.game = await db.playedGames.findOne({
       _id: this.$route.params.id,
     });
 
-    const categoryIds = this.game.categories.map(c => c._id);
-    this.categories = await db.categories.find({
+    const categoryIds = this.data.game.categories.map(c => c._id);
+    const categories = await db.categories.find({
       _id: {
         $in: categoryIds,
       },
     });
+
+    categories.forEach((category) => {
+      Object
+        .keys(category.answers)
+        .forEach(value => category.answers[value].available = true);
+    });
+
+    this.data.categories = categories;
   },
   methods: {
     setCurrentAnswer(answer) {
-      if (!this.current_answer) {
-        this.current_answer = answer;
+      if (!this.data.current_answer) {
+        answer.available = false;
+        this.data.current_answer = answer;
       }
     },
     startAnswer() {
-      this.current_answer_info.seconds_left = 11;
-      this.current_answer_info.end = performance.now() + 11000;
-      this.current_answer_info.buzzed_in = [];
+      this.data.current_answer_info.started = true;
+      this.data.current_answer_info.started_player = this.data.current_player;
+      this.data.current_player = null;
+      this.data.current_answer_info.seconds_left = 11;
+      this.data.current_answer_info.end = performance.now() + 5000;
+      this.data.current_answer_info.buzzed_in = [];
+      this.data.stop_timer = false;
       requestAnimationFrame(this.countDown);
       requestAnimationFrame(this.pollButtons);
     },
+    resumeTimer() {
+      if (this.data.stop_timer && this.data.current_answer_info.seconds_left > 0) {
+        this.data.current_answer_info.end = performance.now() + (this.data.current_answer_info.seconds_left * 1000);
+        this.data.stop_timer = false;
+        requestAnimationFrame(this.countDown);
+        requestAnimationFrame(this.pollButtons);
+      }
+    },
     countDown() {
-      this.current_answer_info.seconds_left = Math.floor(
-        (this.current_answer_info.end - performance.now()) / 1000
-      );
+      if (this.data.stop_timer) return;
 
-      if (this.current_answer_info.seconds_left === 0) {
+      this.data.current_answer_info.seconds_left = Math.floor((this.data.current_answer_info.end - performance.now()) / 1000);
+
+      if (this.data.current_answer_info.seconds_left === 0) {
+        if (this.data.current_answer_info.answering) {
+          this.data.game.players[this.data.current_player].score -= this.data.current_answer.value;
+          this.data.current_answer_info.wrong.push(this.data.current_player);
+          this.data.current_player = null;
+          this.data.current_answer_info.seconds_left = 11;
+          this.data.current_answer_info.end = performance.now() + 5000;
+          audioPlayer.src = 'sounds/times-up.mp3';
+          audioPlayer.currentTime = 0;
+          audioPlayer.play();
+          this.data.current_answer_info.answering = false;
+          if (this.data.current_answer_info.wrong.length !== 3) {
+            requestAnimationFrame(this.countDown);
+            requestAnimationFrame(this.pollButtons);
+          } else {
+            this.data.current_player = this.data.current_answer_info.started_player;
+          }
+        } else {
+          console.log('no one!');
+          this.data.current_player = this.data.current_answer_info.started_player;
+          audioPlayer.src = 'sounds/times-up.mp3';
+          audioPlayer.currentTime = 0;
+          audioPlayer.play();
+        }
         console.log('times up!');
-      } else {
+      } else if (!this.data.stop_timer) {
         requestAnimationFrame(this.countDown);
       }
     },
     pollButtons() {
+      if (this.data.stop_timer) return;
+
       const gamepad = navigator.getGamepads()[0];
       const buttons = gamepad
         .buttons
@@ -112,16 +192,64 @@ export default {
           pressed: b.pressed,
           index,
         }))
-        .filter(b => b.pressed);
+        .filter(b => b.pressed && !this.data.current_answer_info.buzzed_in.includes(b.index));
 
       if (buttons.length === 1) {
-        this.current_player = buttons[0].index;
-        this.current_answer_info.buzzed_in.push(this.current_player);
-        console.log('buzzed in!', this.current_player);
-        this.current_answer_info.seconds_left = 11;
-        this.current_answer_info.end = performance.now() + 11000;
-      } else if (this.current_answer_info.seconds_left !== 0) {
+        this.data.current_player = buttons[0].index;
+        this.data.current_answer_info.buzzed_in.push(this.data.current_player);
+        console.log('buzzed in!', this.data.current_player);
+        this.data.current_answer_info.seconds_left = 11;
+        this.data.current_answer_info.end = performance.now() + 5000;
+        this.data.current_answer_info.answering = true;
+      } else if (this.data.current_answer_info.seconds_left !== 0) {
         requestAnimationFrame(this.pollButtons);
+      }
+    },
+    resetNextQuestion() {
+      this.data.current_answer = null;
+      this.data.current_player = this.data.current_answer_info.started_player;
+      this.data.current_answer_info = {
+        started_player: 0,
+        seconds_left: 0,
+        end: 0,
+        buzzed_in: [],
+        wrong: [],
+        answering: false,
+        started: false,
+      };
+    },
+    correctAnswer() {
+      const winner = this.data.current_player;
+      this.data.stop_timer = true;
+      this.data.game.players[winner].score += this.data.current_answer.value;
+      this.data.current_player = winner;
+      this.data.current_answer_info = {
+        started_player: winner,
+        seconds_left: 0,
+        end: 0,
+        buzzed_in: [],
+        wrong: [],
+        answering: false,
+        started: true,
+      };
+    },
+    wrongAnswer() {
+      const loser = this.data.current_player;
+      this.data.game.players[loser].score -= this.data.current_answer.value;
+      this.data.current_answer_info.wrong.push(this.data.current_player);
+      this.data.current_player = null;
+      this.data.current_answer_info.seconds_left = 11;
+      this.data.current_answer_info.end = performance.now() + 5000;
+      audioPlayer.src = 'sounds/times-up.mp3';
+      audioPlayer.currentTime = 0;
+      audioPlayer.play();
+      this.data.current_answer_info.answering = false;
+      if (this.data.current_answer_info.wrong.length !== 3) {
+        requestAnimationFrame(this.countDown);
+        requestAnimationFrame(this.pollButtons);
+      } else {
+        this.data.current_player = this.data.current_answer_info.started_player;
+        this.data.stop_timer = true;
       }
     },
   },
@@ -132,71 +260,16 @@ export default {
 .game {
   width: 100%;
   height: 100%;
-  text-align: center;
   background: blue;
-}
-
-.board {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  height: 60%;
-}
-
-.category {
-  outline: 4px solid black;
-  display: grid;
-  grid-template-rows: repeat(6, 1fr);
-}
-
-.category-title {
-  color: white;
-  font-size: 2em;
-}
-
-.category-title, .answer {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.answer {
-  outline: 4px solid black;
-}
-
-.answer .value {
-  color: yellow;
-}
-
-.answer .value, .player h3, .controls  {
-  font-family: Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif;
-  font-weight: bold;
-  font-size: 3em;
-}
-
-.players {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  height: 10%;
-}
-
-.player {
-  outline: 4px solid black;
-}
-
-.current_player {
-  outline: 4px solid red;
-}
-
-.player input {
   text-align: center;
 }
 
-.player h3 {
-  color: white;
+.game-area {
+  height: 77%;
 }
 
 .current-status {
-  height: 25%;
+  height: 15%;
   color: white;
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -208,10 +281,17 @@ export default {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  outline: 4px solid yellow;
+  outline: 4px solid #eebe3f;
 }
 
-.controls {
+.controls, .controls-status {
   color: white;
+  display: flex;
+  justify-content: space-around;
+  outline: 4px solid black;
+}
+
+.wrong {
+  background: gray;
 }
 </style>

@@ -22,6 +22,8 @@
 </template>
 
 <script>
+import { ipcRenderer } from 'electron';
+
 import db from '@/db';
 
 export default {
@@ -64,6 +66,7 @@ export default {
           id: created._id,
         },
       });
+      ipcRenderer.send('launch-game');
     },
   },
 };

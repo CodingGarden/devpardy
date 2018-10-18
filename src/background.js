@@ -1,4 +1,4 @@
-import electron, { app, protocol, BrowserWindow, remote } from 'electron';
+import electron, { app, protocol, BrowserWindow, remote, ipcMain } from 'electron';
 import * as path from 'path';
 import { format as formatUrl } from 'url';
 import {
@@ -14,6 +14,36 @@ if (isDevelopment) {
 
 // global reference to mainWindow (necessary to prevent window from being garbage collected)
 let mainWindow;
+let gameWindow;
+
+ipcMain.on('launch-game', () => {
+  if (!gameWindow) {
+    const { width, height } = electron.screen.getPrimaryDisplay().workAreaSize;
+    gameWindow = new BrowserWindow({
+      width,
+      height,
+    });
+
+    if (isDevelopment) {
+      // Load the url of the dev server if in development mode
+      console.log(process.env.WEBPACK_DEV_SERVER_URL);
+      gameWindow.loadURL(process.env.WEBPACK_DEV_SERVER_URL + '#/view-game');
+      if (!process.env.IS_TEST) gameWindow.webContents.openDevTools();
+    } else {
+      createProtocol('app');
+      //   Load the index.html when not in development
+      gameWindow.loadURL(formatUrl({
+        pathname: path.join(__dirname, 'index.html'),
+        protocol: 'file',
+        slashes: true,
+      }));
+    }
+
+    gameWindow.on('closed', () => {
+      gameWindow = null;
+    });
+  }
+});
 
 // Standard scheme must be registered before the app is ready
 protocol.registerStandardSchemes(['app'], { secure: true });
@@ -27,6 +57,7 @@ function createMainWindow() {
 
   if (isDevelopment) {
     // Load the url of the dev server if in development mode
+    console.log(process.env.WEBPACK_DEV_SERVER_URL);
     window.loadURL(process.env.WEBPACK_DEV_SERVER_URL);
     if (!process.env.IS_TEST) window.webContents.openDevTools();
   } else {

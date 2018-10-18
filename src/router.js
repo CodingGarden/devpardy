@@ -7,6 +7,7 @@ import ManageGames from '@/views/ManageGames.vue';
 import ManageGame from '@/views/ManageGame.vue';
 import Category from '@/views/Category.vue';
 import PlayGame from '@/views/PlayGame.vue';
+import ViewGame from '@/views/ViewGame.vue';
 
 Vue.use(Router);
 
@@ -41,6 +42,11 @@ export default new Router({
       path: '/play-game/:id',
       name: 'play-game',
       component: PlayGame,
+    },
+    {
+      path: '/view-game',
+      name: 'view-game',
+      component: ViewGame,
     },
   ],
 });
