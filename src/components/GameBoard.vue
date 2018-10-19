@@ -36,7 +36,13 @@
         <h3 v-else class="player-name">
           {{player.name}}
         </h3>
-        <h3 class="m-0">{{player.score}}</h3>
+        <b-input
+          v-if="!viewMode"
+          v-model="player.score"
+          class="m-0" />
+        <h3 v-else class="m-0">
+          {{player.score}}
+        </h3>
       </section>
     </section>
     <section class="timer">
@@ -50,9 +56,9 @@
       class="big-answer"
       v-if="viewMode"
       :class="{
-        visible: data.current_answer,
+        visible: data.current_answer || data.finalJeopardy,
       }">
-      <p>{{data.current_answer ? data.current_answer.answer : ''}}</p>
+      <p>{{data.current_answer ? data.current_answer.answer : data.finalJeopardy}}</p>
     </section>
   </section>
 </template>
@@ -85,7 +91,7 @@ export default {
 
 .category-title {
   color: white;
-  font-size: 2em;
+  font-size: 2vw;
   font-family: Cambria,Cochin,Georgia,Times,Times New Roman,serif;
 }
 
@@ -110,6 +116,7 @@ export default {
 
 .answer .value {
   color: #eebe3f;
+  font-size: 4vw;
 }
 
 .answer .value:hover {
@@ -119,6 +126,9 @@ export default {
 .answer .value, .player h3, .controls  {
   font-family: Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif;
   font-weight: bold;
+}
+
+.player h3, .controls {
   font-size: 3em;
 }
 
@@ -178,7 +188,7 @@ export default {
   text-align: center;
   justify-content: center;
   align-items: center;
-  font-size: 7vw;
+  font-size: 4vw;
   transition-duration: 1s;
 }
 

@@ -1,6 +1,6 @@
 <template>
   <section>
-    <h1>{{category.name}}</h1>
+    <b-input class="m-2" v-model="category.name" />
     <b-alert v-if="changed" show variant="danger">
       <p>You have Unsaved Changes!</p>
       <b-button
@@ -79,6 +79,8 @@ export default {
       }, this.category);
       this.changed = false;
       this.firstLoad = true;
+
+      console.log(JSON.stringify(this.category));
     },
   },
 };

@@ -43,6 +43,9 @@
     </section>
     <section class="controls-status">
       <h1>Time left: {{data.current_answer_info.seconds_left}}</h1>
+      <b-input
+        v-model="data.finalJeopardy">
+      </b-input>
       <b-button
         v-if="data.stop_timer"
         @click="resumeTimer()">
@@ -68,6 +71,7 @@ const audioPlayer = new Audio();
 export default {
   data: () => ({
     data: {
+      finalJeopardy: '',
       game: {},
       categories: [],
       current_player: 0,
@@ -91,9 +95,6 @@ export default {
     data: {
       handler() {
         localStorage.gameData = JSON.stringify(this.data);
-        // db.playedGames.update({
-        //   _id: this.$route.params.id,
-        // }, this.data.game);
       },
       deep: true,
     },
@@ -221,6 +222,7 @@ export default {
     correctAnswer() {
       const winner = this.data.current_player;
       this.data.stop_timer = true;
+      this.data.game.players[winner].score = Number(this.data.game.players[winner].score);
       this.data.game.players[winner].score += this.data.current_answer.value;
       this.data.current_player = winner;
       this.data.current_answer_info = {
